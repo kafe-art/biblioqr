@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node"
+    ],
+    "noUnusedLocals": true
+  },
+  "include": [
+    "server",
+    "shared",
+    "tests/*.test.ts"
+  ]
+}

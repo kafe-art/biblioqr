@@ -1,0 +1,152 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Provider is a migration-time choice: npm run db:provider -- sqlite|postgresql.
+datasource db {
+  provider = "sqlite"
+  url = env("DATABASE_URL")
+}
+
+enum Role {
+  student
+  librarian
+  admin
+}
+enum UserStatus {
+  active
+  blocked
+}
+enum CopyCondition {
+  excelente
+  regular
+  mantenimiento
+  baja
+}
+enum CopyStatus {
+  available
+  loaned
+  reserved
+}
+enum ReservationStatus {
+  pending
+  ready
+  collected
+  expired
+  cancelled
+}
+enum PickupMethod {
+  desk
+  locker
+}
+enum FineStatus {
+  pending
+  paid
+  waived
+}
+model User {
+  id String @id @default(cuid())
+  code String @unique
+  email String @unique
+  name String
+  role Role
+  status UserStatus @default(active)
+  passwordHash String
+  faculty String
+  career String @default("")
+  ip String @default("")
+  lastAccess DateTime @default(now())
+  reservations Reservation[]
+  loans Loan[]
+  fines Fine[]
+}
+model Book {
+  id String @id @default(cuid())
+  isbn String @unique
+  title String
+  author String
+  year Int
+  genre String
+  faculties Json
+  synopsis String
+  format String
+  pages Int
+  location Json
+  addedAt DateTime @default(now())
+  demand Int @default(0)
+  coverUrl String?
+  copies Copy[]
+  reservations Reservation[]
+  loans Loan[]
+  fines Fine[]
+}
+model Copy {
+  id String @id @default(cuid())
+  bookId String
+  book Book @relation(fields: [bookId], references: [id])
+  condition CopyCondition @default(excelente)
+  status CopyStatus @default(available)
+  reservations Reservation[]
+  loans Loan[]
+  @@index([bookId, status])
+}
+model Reservation {
+  id String @id @default(cuid())
+  code String @unique
+  bookId String
+  copyId String
+  userId String
+  createdAt DateTime @default(now())
+  pickupAt DateTime
+  expiresAt DateTime
+  method PickupMethod
+  locker String?
+  status ReservationStatus @default(pending)
+  nonce String @unique
+  consumedAt DateTime?
+  book Book @relation(fields: [bookId], references: [id])
+  copy Copy @relation(fields: [copyId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  @@index([status, expiresAt])
+  @@index([userId, bookId])
+}
+model Loan {
+  id String @id @default(cuid())
+  bookId String
+  copyId String?
+  userId String
+  loanedAt DateTime @default(now())
+  dueAt DateTime
+  returnedAt DateTime?
+  renewals Int @default(0)
+  book Book @relation(fields: [bookId], references: [id])
+  copy Copy? @relation(fields: [copyId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+  fines Fine[]
+  @@index([copyId, returnedAt])
+  @@index([userId, returnedAt])
+}
+model Fine {
+  id String @id @default(cuid())
+  userId String
+  loanId String @unique
+  bookId String
+  days Int
+  amount Float
+  createdAt DateTime @default(now())
+  status FineStatus @default(pending)
+  user User @relation(fields: [userId], references: [id])
+  loan Loan @relation(fields: [loanId], references: [id])
+  book Book @relation(fields: [bookId], references: [id])
+}
+// Only insertion and reading are exposed; server startup installs database guards.
+model AuditEntry {
+  id String @unique @default(cuid())
+  seq Int @id @default(autoincrement())
+  ts DateTime @default(now())
+  actorName String
+  actorRole String
+  action String
+  detail String
+  ip String
+}

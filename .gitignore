@@ -1,0 +1,25 @@
+# Dependencias
+node_modules/
+.npm-cache/
+
+# Artefactos de compilación
+dist/
+coverage/
+
+# Variables de entorno (nunca subir secretos)
+.env
+.env.*
+!.env.example
+
+# Base de datos local
+prisma/*.db
+prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+
+# Registros y temporales
+*.log
+npm-debug.log*
+.vite/
+.DS_Store
+Thumbs.db

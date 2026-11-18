@@ -1,0 +1,12 @@
+import { Card, SectionTitle, cn } from '../../components/ui/primitives'
+import { PAVILIONS, SHELVES_PER_PAVILION, SHELF_ROWS, SHELF_COLS } from '../../data/seed'
+import type { Pavilion } from '../../lib/types'
+import { useLibrary } from '../../store/library'
+
+export function LibraryMapView() {
+  const { books, focusBookId, actions } = useLibrary()
+  const focus = books.find((b) => b.id === focusBookId)
+  return <div className="space-y-6"><SectionTitle title="Ubicación en biblioteca" hint={focus ? `${focus.title}: pabellón ${focus.location.pavilion}, estante ${focus.location.shelf}, fila ${focus.location.row}, columna ${focus.location.col}` : 'Selecciona una posición para consultar los títulos.'} />
+    {(Object.keys(PAVILIONS) as Pavilion[]).map((p) => <section key={p}><SectionTitle title={`${PAVILIONS[p].name} · Pabellón ${p}`} hint={PAVILIONS[p].area} /><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: SHELVES_PER_PAVILION }, (_, i) => i + 1).map((shelf) => <Card key={shelf} className="space-y-3 p-4"><h3 className="text-sm font-semibold">Estante {shelf}</h3><div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${SHELF_COLS}, minmax(0, 1fr))` }}>{Array.from({ length: SHELF_ROWS * SHELF_COLS }, (_, i) => { const row = Math.floor(i / SHELF_COLS) + 1; const col = i % SHELF_COLS + 1; const titles = books.filter((b) => b.format !== 'digital' && b.location.pavilion === p && b.location.shelf === shelf && b.location.row === row && b.location.col === col); const active = titles.some((b) => b.id === focusBookId); return <button key={i} type="button" disabled={!titles.length} aria-pressed={active} aria-label={`Fila ${row}, columna ${col}: ${titles.map((b) => b.title).join(', ') || 'sin títulos'}`} title={titles.map((b) => b.title).join(', ')} onClick={() => actions.focusBook(titles[0].id)} className={cn('h-7 rounded text-xs disabled:opacity-30', active ? 'bg-primary text-white ring-2 ring-accent' : titles.length ? 'bg-accent/20 text-accent' : 'bg-surface-2')}>{row}.{col}</button> })}</div>{books.filter((b) => b.format !== 'digital' && b.location.pavilion === p && b.location.shelf === shelf).map((b) => <button key={b.id} type="button" onClick={() => actions.focusBook(b.id)} className={cn('block text-left text-xs hover:underline', b.id === focusBookId && 'font-bold text-accent')}>{b.title} · F{b.location.row} C{b.location.col}</button>)}</Card>)}</div></section>)}
+  </div>
+}
