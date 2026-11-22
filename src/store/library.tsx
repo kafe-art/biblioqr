@@ -64,6 +64,15 @@ export function createActions(get: () => State, set: (next: State) => void) {
     } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se pudo completar la operación.' } }
   }
   const nothing = () => undefined
+  /** Opens the session returned by any sign-in endpoint and loads the user's data. */
+  const signIn = async (path: string, body: Record<string, string>): Promise<Result<User>> => {
+    try {
+      const { user } = await api<{user: User}>(path, { method: 'POST', body })
+      set({ ...emptyState, users: [user], sessionUserId: user.id, view: homeView(user.role) })
+      try { await refresh() } catch { toast.error('Sesión iniciada; no se pudieron cargar los datos. Recarga la página.') }
+      return { ok: true, data: user }
+    } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se pudo iniciar sesión.' } }
+  }
   return {
     refresh,
     async restore() {
@@ -73,13 +82,12 @@ export function createActions(get: () => State, set: (next: State) => void) {
         await refresh()
       } catch { set({ ...emptyState }) }
     },
-    async login(identifier: string, password: string): Promise<Result<User>> {
-      try {
-        const { user } = await api<{user: User}>('/auth/login', { method: 'POST', body: { identifier, password } })
-        set({ ...emptyState, users: [user], sessionUserId: user.id, view: homeView(user.role) })
-        try { await refresh() } catch { toast.error('Sesión iniciada; no se pudieron cargar los datos. Recarga la página.') }
-        return { ok: true, data: user }
-      } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se pudo iniciar sesión.' } }
+    login(identifier: string, password: string) { return signIn('/auth/login', { identifier, password }) },
+    verifyOtp(email: string, otp: string) { return signIn('/auth/verify-otp', { email, otp }) },
+    setStaffPassword(email: string, otp: string, password: string) { return signIn('/auth/staff/password', { email, otp, password }) },
+    async requestCode(kind: 'student' | 'staff', email: string): Promise<Result<{ resendInSeconds: number }>> {
+      try { return { ok: true, data: await api<{ resendInSeconds: number }>(kind === 'student' ? '/auth/send-otp' : '/auth/staff/send-code', { method: 'POST', body: { email } }) } }
+      catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'No se pudo enviar el código.' } }
     },
     async logout() {
       try { await api('/auth/logout', { method: 'POST', body: {} }); set({ ...emptyState }) }
@@ -111,10 +119,8 @@ export function createActions(get: () => State, set: (next: State) => void) {
     markReservationReady: (id: string) => mutate('/reservations/'+encodeURIComponent(id)+'/ready', 'POST', {}, nothing),
     payFine: (id: string) => mutate('/fines/'+encodeURIComponent(id)+'/pay', 'POST', {}, nothing),
     waiveFine: (id: string) => mutate('/fines/'+encodeURIComponent(id)+'/waive', 'POST', {}, nothing),
-    bulkUsers: (ids: string[], op: UserBulkOp) => {
-      const password = op.type === 'reset' ? window.prompt('Nueva contraseña temporal (mínimo 12 caracteres):') : undefined
-      return mutate<number>('/admin/users/bulk', 'POST', { ids, op: op.type === 'reset' ? { ...op, password } : op }, r => r.count)
-    },
+    bulkUsers: (ids: string[], op: UserBulkOp) => mutate<number>('/admin/users/bulk', 'POST', { ids, op }, r => r.count),
+    grantAccess: (email: string, name: string, role: Role) => mutate<User>('/admin/users', 'POST', { email, name, role }, r => r.user),
     saveBook: (input: BookInput, id?: string) => mutate<Book>('/admin/books'+(id ? '/'+encodeURIComponent(id) : ''), id ? 'PUT' : 'POST', input, r => r.book),
     importBooks: (books: BookInput[]) => mutate<{created: number; skipped: number}>('/admin/books/import', 'POST', { books }, r => r),
     deleteBook: (id: string) => mutate('/admin/books/'+encodeURIComponent(id), 'DELETE', {}, nothing),

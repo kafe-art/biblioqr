@@ -201,6 +201,29 @@
     translate: 0 -10px;
   }
 }
+/* Login: animated mesh gradient, twinkling particles, QR scan line */
+@keyframes mesh-a {
+  0%, 100% { translate: 0 0; scale: 1; }
+  33% { translate: 8vw 6vh; scale: 1.15; }
+  66% { translate: -4vw 10vh; scale: 0.95; }
+}
+@keyframes mesh-b {
+  0%, 100% { translate: 0 0; scale: 1; }
+  50% { translate: -10vw -8vh; scale: 1.2; }
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: 0.9; }
+}
+@keyframes qr-scan {
+  0% { translate: 0 -2px; opacity: 0; }
+  15%, 85% { opacity: 1; }
+  100% { translate: 0 58px; opacity: 0; }
+}
+@keyframes glow-breathe {
+  0%, 100% { opacity: 0.55; scale: 1; }
+  50% { opacity: 0.9; scale: 1.08; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

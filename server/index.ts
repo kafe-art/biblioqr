@@ -8,7 +8,7 @@ import { db } from './db'
 import { env } from './env'
 import { sweepExpired } from './domain'
 import { errorHandler, HttpError } from './http'
-import { authRoutes } from './routes/auth'
+import { authRoutes, codeFromEmail, nameFromEmail } from './routes/auth'
 import { catalogRoutes } from './routes/catalog'
 import { reservationRoutes } from './routes/reservations'
 import { circulationRoutes } from './routes/circulation'
@@ -52,6 +52,12 @@ async function start() {
     await db.$executeRaw`CREATE OR REPLACE FUNCTION audit_immutable() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''AuditEntry append-only''; END;'`
     await db.$executeRaw`DROP TRIGGER IF EXISTS audit_immutable_trigger ON "AuditEntry"`
     await db.$executeRaw`CREATE TRIGGER audit_immutable_trigger BEFORE UPDATE OR DELETE OR TRUNCATE ON "AuditEntry" FOR EACH STATEMENT EXECUTE FUNCTION audit_immutable()`
+  }
+  // The owner's account (ADMIN_EMAIL) always exists as an active administrator.
+  if (env.ADMIN_EMAIL) {
+    const owner = await db.user.findUnique({ where: { email: env.ADMIN_EMAIL } })
+    if (!owner) await db.user.create({ data: { email: env.ADMIN_EMAIL, name: nameFromEmail(env.ADMIN_EMAIL), role: 'admin', code: await codeFromEmail(db, env.ADMIN_EMAIL, 'P-') } })
+    else if (owner.role !== 'admin' || owner.status !== 'active') await db.user.update({ where: { id: owner.id }, data: { role: 'admin', status: 'active' } })
   }
   await sweepExpired()
   let sweeping = false

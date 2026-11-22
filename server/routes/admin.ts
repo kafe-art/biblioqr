@@ -1,6 +1,8 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { actor, hashPassword, requireAuth, requirePermission } from '../auth'
+import { actor, requireAuth, requirePermission } from '../auth'
+import { env } from '../env'
+import { codeFromEmail, isStudentEmail, nameFromEmail } from './auth'
 import { db, transaction, type Tx } from '../db'
 import { audit, uniqueCode } from '../domain'
 import { emptyBody, fail, idSchema, paramId, route, serialize } from '../http'
@@ -28,22 +30,26 @@ async function saveBook(tx: Tx, input: z.infer<typeof bookSchema>, id?: string) 
   return tx.book.create({ data: { ...fields, location: { pavilion, shelf: 1, row: 1, col: 1 }, copies: { create: Array.from({ length: input.format === 'digital' ? 0 : copies }, () => ({ id: uniqueCode('EJ') })) } }, include: { copies: true } })
 }
 adminRoutes.get('/admin/users', requirePermission('user:manage'), route(async (_req, res) => res.json({ users: serialize(await db.user.findMany()) })))
+// Grants access: staff sign in with their personal email (and create their password
+// with an emailed code); students must use the institutional domain.
 adminRoutes.post('/admin/users', requirePermission('user:manage'), route(async (req, res) => {
-  const input = z.object({ code: z.string().trim().min(1).max(40).transform(v => v.toUpperCase()), email: z.string().email().transform(v => v.toLowerCase()), name: z.string().trim().min(1).max(200), role: roleSchema, faculty, career: z.string().max(200).default(''), password: z.string().min(12).max(128) }).strict().parse(req.body)
-  const { password, ...fields } = input
-  const passwordHash = await hashPassword(password)
+  const input = z.object({ email: z.string().trim().toLowerCase().email().max(254), name: z.string().trim().max(200).default(''), role: roleSchema }).strict().parse(req.body)
+  if (input.role === 'student' && !isStudentEmail(input.email)) return fail(400, `Los estudiantes deben usar su correo institucional (@${env.STUDENT_EMAIL_DOMAIN}).`)
   const user = await transaction(async tx => {
-    const user = await tx.user.create({ data: { ...fields, passwordHash } })
-    await audit(tx, actor(req), 'user', `Alta de usuario ${user.id}.`)
+    const existing = await tx.user.findUnique({ where: { email: input.email } })
+    const user = existing
+      ? await tx.user.update({ where: { id: existing.id }, data: { role: input.role, status: 'active', ...(input.name ? { name: input.name } : {}) } })
+      : await tx.user.create({ data: { email: input.email, name: input.name || nameFromEmail(input.email), role: input.role, code: await codeFromEmail(tx, input.email, input.role === 'student' ? '' : 'P-') } })
+    await audit(tx, actor(req), 'user', `${existing ? 'Actualización de acceso' : 'Alta de acceso'} ${user.id} (${input.email}) con rol ${input.role}.`)
     return user
   })
   res.status(201).json({ user: serialize(user) })
 }))
 adminRoutes.post('/admin/users/bulk', requirePermission('user:manage'), route(async (req, res) => {
-  const input = z.object({ ids: z.array(idSchema).min(1).max(500), op: z.discriminatedUnion('type', [z.object({ type: z.literal('activate') }).strict(), z.object({ type: z.literal('block') }).strict(), z.object({ type: z.literal('role'), role: roleSchema }).strict(), z.object({ type: z.literal('reset'), password: z.string().min(12).max(128) }).strict()]) }).strict().parse(req.body)
+  const input = z.object({ ids: z.array(idSchema).min(1).max(500), op: z.discriminatedUnion('type', [z.object({ type: z.literal('activate') }).strict(), z.object({ type: z.literal('block') }).strict(), z.object({ type: z.literal('role'), role: roleSchema }).strict(), z.object({ type: z.literal('reset') }).strict()]) }).strict().parse(req.body)
   const who = actor(req)
   if (input.ids.includes(who.id) && (input.op.type === 'block' || (input.op.type === 'role' && input.op.role !== 'admin'))) return fail(403, 'No puedes bloquear ni degradar tu propia cuenta.')
-  const data = input.op.type === 'activate' ? { status: 'active' as const } : input.op.type === 'block' ? { status: 'blocked' as const } : input.op.type === 'role' ? { role: input.op.role } : { passwordHash: await hashPassword(input.op.password) }
+  const data = input.op.type === 'activate' ? { status: 'active' as const } : input.op.type === 'block' ? { status: 'blocked' as const } : input.op.type === 'role' ? { role: input.op.role } : { passwordHash: '' }
   const count = await transaction(async tx => {
     const changed = await tx.user.updateMany({ where: { id: { in: input.ids } }, data })
     if (!changed.count) return fail(404, 'Usuarios no encontrados.')

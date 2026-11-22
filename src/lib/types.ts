@@ -54,7 +54,7 @@ export interface User {
   name: string
   email: string
   role: Role
-  faculty: Faculty
+  faculty: Faculty | ''
   career: string
   status: 'active' | 'blocked'
   ip: string

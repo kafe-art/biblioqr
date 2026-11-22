@@ -51,8 +51,8 @@ model User {
   name String
   role Role
   status UserStatus @default(active)
-  passwordHash String
-  faculty String
+  passwordHash String @default("")
+  faculty String @default("")
   career String @default("")
   ip String @default("")
   lastAccess DateTime @default(now())
@@ -149,4 +149,16 @@ model AuditEntry {
   action String
   detail String
   ip String
+}
+
+// Single-use email verification codes (student login and staff password setup).
+model EmailCode {
+  id String @id @default(cuid())
+  email String
+  purpose String
+  codeHash String
+  attempts Int @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([email, purpose])
 }

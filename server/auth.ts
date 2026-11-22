@@ -10,8 +10,9 @@ import { HttpError } from './http'
 declare global { namespace Express { interface Request { user?: User } } }
 export const hashPassword = (password: string) => bcrypt.hash(password, 12)
 export const checkPassword = (password: string, hash: string) => bcrypt.compare(password, hash)
+export const SESSION_MS = 12 * 60 * 60 * 1000
 export const cookieOptions = { httpOnly: true, sameSite: 'strict' as const, secure: env.NODE_ENV === 'production', path: '/' }
-export const issueJwt = (user: User) => jwt.sign({}, env.JWT_SECRET, { subject: user.id, algorithm: 'HS256', expiresIn: '15m', issuer: 'biblioqr', audience: 'biblioqr-web' })
+export const issueJwt = (user: User) => jwt.sign({}, env.JWT_SECRET, { subject: user.id, algorithm: 'HS256', expiresIn: SESSION_MS / 1000, issuer: 'biblioqr', audience: 'biblioqr-web' })
 export const requireAuth: RequestHandler = async (req, _res, next) => {
   try {
     const payload = jwt.verify(req.cookies?.session ?? '', env.JWT_SECRET, { algorithms: ['HS256'], issuer: 'biblioqr', audience: 'biblioqr-web' })
