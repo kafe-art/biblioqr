@@ -24,7 +24,8 @@ app.use(helmet({
   contentSecurityPolicy: { directives: { 'img-src': ["'self'", 'data:', 'blob:', 'https:'] } },
 }))
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] }))
-app.use((req, _res, next) => {
+// Origin checks guard the API only; page navigations from other sites (links) must still load the SPA.
+app.use('/api', (req, _res, next) => {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.headers.origin && req.headers.origin !== env.CORS_ORIGIN) { next(new HttpError(403, 'Origen de solicitud no permitido.')); return }
   if (req.headers['sec-fetch-site'] === 'cross-site') { next(new HttpError(403, 'Origen de solicitud no permitido.')); return }
   next()
