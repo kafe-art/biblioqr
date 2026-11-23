@@ -13,7 +13,7 @@
     "db:provider": "node scripts/prisma-provider.cjs",
     "db:seed-history": "tsx scripts/seed-history.ts",
     "start": "tsx server/index.ts",
-    "start:render": "prisma db push --skip-generate && tsx scripts/purge-demo-data.ts && tsx scripts/seed-catalog.ts && tsx server/index.ts",
+    "start:render": "tsx scripts/render-migrate.ts && tsx scripts/seed-catalog.ts && tsx scripts/seed-admin.ts && tsx server/index.ts",
     "db:seed-catalog": "tsx scripts/seed-catalog.ts",
     "db:purge-demo": "tsx scripts/purge-demo-data.ts"
   },

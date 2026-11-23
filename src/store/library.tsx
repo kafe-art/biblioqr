@@ -10,6 +10,8 @@ export interface State {
   books: Book[]
   loans: Loan[]
   reservations: Reservation[]
+  incidencias: { id: string; usuarioId: string; tipo: string; descripcion: string; estado: string }[]
+  avisos: { id: string; usuarioId: string; asunto: string; mensaje: string; estado: string }[]
   fines: Fine[]
   audit: AuditEntry[]
   wishlist: Record<string, string[]>
@@ -23,6 +25,7 @@ export interface State {
 export interface BookInput {
   isbn: string
   title: string
+  editorial?: string
   author: string
   year: number
   genre: string
@@ -36,6 +39,7 @@ export interface BookInput {
 }
 
 export interface Receipt {
+  receipts?: Receipt[]
   kind: 'loan' | 'return'
   loan: Loan
   user: User
@@ -47,7 +51,7 @@ export interface Receipt {
 export type UserBulkOp = { type: 'activate' } | { type: 'block' } | { type: 'reset' } | { type: 'role'; role: Role }
 
 
-const emptyState: State = { users: [], books: [], loans: [], reservations: [], fines: [], audit: [], wishlist: {}, sessionUserId: null, view: 'inicio', focusBookId: null }
+const emptyState: State = { users: [], books: [], loans: [], reservations: [], fines: [], incidencias: [], avisos: [], audit: [], wishlist: {}, sessionUserId: null, view: 'inicio', focusBookId: null }
 
 export function createActions(get: () => State, set: (next: State) => void) {
   const refresh = async () => {
@@ -108,7 +112,7 @@ export function createActions(get: () => State, set: (next: State) => void) {
       set({ ...s, wishlist: { ...s.wishlist, [id]: added ? [bookId, ...list] : list.filter(b => b !== bookId) } })
       return added
     },
-    reserve: (bookId: string, pickupAt: number, method: PickupMethod) => mutate<Reservation>('/reservations', 'POST', { bookId, pickupAt, method }, r => ({ ...r.reservation, qrToken: r.qrToken })),
+    reserve: (bookIds: string[], pickupAt: number, method: PickupMethod) => mutate<Reservation>('/reservations', 'POST', { bookIds, pickupAt, method }, r => ({ ...r.reservation, qrToken: r.qrToken })),
     cancelReservation: (id: string) => mutate('/reservations/'+encodeURIComponent(id), 'DELETE', {}, nothing),
     borrowDigital: (bookId: string) => mutate<Loan>('/loans/digital', 'POST', { bookId }, r => r.loan),
     returnDigital: (id: string) => mutate('/loans/'+encodeURIComponent(id)+'/return-digital', 'POST', {}, nothing),
@@ -117,6 +121,8 @@ export function createActions(get: () => State, set: (next: State) => void) {
     deliverReservation: (qrToken: string) => mutate<Receipt>('/circulation/scan', 'POST', { qrToken }, r => r),
     checkin: (copyId: string) => mutate<Receipt>('/circulation/checkin', 'POST', { copyId }, r => r),
     markReservationReady: (id: string) => mutate('/reservations/'+encodeURIComponent(id)+'/ready', 'POST', {}, nothing),
+    reportIncident: (loanId: string, tipo: string, descripcion: string) => mutate('/incidencias', 'POST', { loanId, tipo, descripcion }, nothing),
+    readNotice: (id: string) => mutate('/avisos/'+id+'/leer', 'POST', {}, nothing),
     payFine: (id: string) => mutate('/fines/'+encodeURIComponent(id)+'/pay', 'POST', {}, nothing),
     waiveFine: (id: string) => mutate('/fines/'+encodeURIComponent(id)+'/waive', 'POST', {}, nothing),
     bulkUsers: (ids: string[], op: UserBulkOp) => mutate<number>('/admin/users/bulk', 'POST', { ids, op }, r => r.count),

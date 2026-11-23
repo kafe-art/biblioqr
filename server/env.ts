@@ -8,7 +8,7 @@ const positive =z.coerce.number().positive()
 const integer = positive.int()
 const schema = z.object({
   JWT_SECRET: z.string().min(32), QR_HMAC_SECRET: z.string().min(32),
-  DATABASE_URL: z.string().regex(/^(file:.+|postgres(?:ql)?:\/\/.+)$/), PORT: integer.max(65535), CORS_ORIGIN: z.string().url().refine(value => new URL(value).origin === value),
+  DATABASE_URL: z.string().regex(/^(postgres(?:ql)?:\/\/.+)$/), PORT: integer.max(65535), CORS_ORIGIN: z.string().url().refine(value => new URL(value).origin === value),
   POLICY_LOAN_DAYS: integer, POLICY_RENEWAL_DAYS: integer,
   POLICY_MAX_RENEWALS: z.coerce.number().int().nonnegative(), POLICY_MAX_LOANS: integer,
   POLICY_HOLD_HOURS: positive, POLICY_FINE_PER_DAY: positive,

@@ -1,3 +1,4 @@
+import { MAX_RESERVATION_BOOKS } from '../../../shared/reservations'
 import { motion } from 'motion/react'
 import { Archive, CalendarClock, CheckCircle2, MapPin, Store, Tablet, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -51,19 +52,21 @@ export function BookSheet() {
   const [day, setDay] = useState(0)
   const [hour, setHour] = useState(9)
   const [method, setMethod] = useState<PickupMethod>('desk')
+  const [extra, setExtra] = useState<string[]>([])
   const [ticketId, setTicketId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!focusBookId) return
     setDay(slots[0].day)
     setHour(slots[0].hours[0])
+    setExtra([])
     setMethod('desk')
     setTicketId(null)
   }, [focusBookId, slots])
 
   if (!current || !user) return null
 
-  const activeReservation = reservations.find((r) => r.userId === user.id && r.bookId === current.id && (r.status === 'pending' || r.status === 'ready'))
+  const activeReservation = reservations.find((r) => r.userId === user.id && (r.bookId === current.id || r.details?.some(d => d.bookId === current.id)) && (r.status === 'pending' || r.status === 'ready'))
   const ticket = reservations.find((r) => r.id === ticketId) ?? activeReservation
   const available = availableCopies(current).length
   const check = eligibility(user, loans, fines, true)
@@ -74,7 +77,7 @@ export function BookSheet() {
     const at = new Date()
     at.setDate(at.getDate() + day)
     at.setHours(hour, 0, 0, 0)
-    const res = await actions.reserve(current.id, at.getTime(), method)
+    const res = await actions.reserve([current.id, ...extra], at.getTime(), method)
     if (!res.ok) {
       feedback.error()
       toast.error('No se pudo reservar', { description: res.error })
@@ -103,7 +106,7 @@ export function BookSheet() {
         </div>
         <div className="min-w-0">
           <h3 className="leading-snug font-semibold">{current.title}</h3>
-          <p className="mt-0.5 text-sm text-muted">{current.author}</p>
+          <p className="mt-0.5 text-sm text-muted">{current.author}{current.editorial && ' · '+current.editorial}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge>{current.genre}</Badge>
             <Badge>{current.year}</Badge>
@@ -158,6 +161,14 @@ export function BookSheet() {
           </p>
         ) : (
           <div className="space-y-5">
+            <fieldset>
+              <legend className="mb-2 text-sm font-medium">Libros en esta reserva ({extra.length + 1}/{MAX_RESERVATION_BOOKS})</legend>
+              {extra.map(id => <p key={id}>{books.find(b => b.id === id)?.title} <button type="button" onClick={() => setExtra(extra.filter(v => v !== id))}>Quitar</button></p>)}
+              {extra.length + 1 < MAX_RESERVATION_BOOKS && <select aria-label="Añadir otro libro" value="" onChange={e => setExtra([...extra, e.target.value])}>
+                <option value="" disabled>Añadir otro libro</option>
+                {books.filter(b => b.id !== current.id && !extra.includes(b.id) && availableCopies(b).length > 0).map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+              </select>}
+            </fieldset>
             <fieldset>
               <legend className="mb-2 flex items-center gap-2 text-[13px] font-medium"><CalendarClock size={15} aria-hidden /> ¿Cuándo lo recoges?</legend>
               <div className="flex gap-2">

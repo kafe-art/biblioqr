@@ -1,0 +1,1 @@
+export const MAX_RESERVATION_BOOKS = 3

@@ -1,6 +1,12 @@
 const fs = require('node:fs');
-const provider = process.argv[2];
-if (!['sqlite','postgresql'].includes(provider)) throw new Error('Usa npm run db:provider -- sqlite|postgresql');
+
+const provider = process.argv[2] ?? 'postgresql';
+if (provider !== 'postgresql') {
+  throw new Error('BiblioQR usa únicamente PostgreSQL. Usa: npm run db:provider -- postgresql');
+}
+
 const path = 'prisma/schema.prisma';
-fs.writeFileSync(path, fs.readFileSync(path,'utf8').replace(/provider = "(?:sqlite|postgresql)"/, 'provider = "'+provider+'"'));
-console.log('Provider actualizado. Genera migraciones independientes para '+provider+'.');
+const current = fs.readFileSync(path, 'utf8');
+const updated = current.replace(/provider = "(?:sqlite|postgresql)"/, 'provider = "postgresql"');
+fs.writeFileSync(path, updated);
+console.log('Provider configurado en postgresql.');

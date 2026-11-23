@@ -10,9 +10,12 @@ import type { Result } from '../../lib/types'
 import { useLibrary, type Receipt } from '../../store/library'
 
 export function CirculationView() {
-  const { actions, users, fines } = useLibrary()
+  const { actions, users, fines, loans, books, incidencias } = useLibrary()
   const [tab, setTab] = useState<'loan' | 'reservation' | 'return'>('loan')
   const [card, setCard] = useState('')
+  const [loanId, setLoanId] = useState('')
+  const [tipo, setTipo] = useState('dano')
+  const [descripcion, setDescripcion] = useState('')
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const process = async (pending: Promise<Result<Receipt>>) => {
     const result = await pending
@@ -32,8 +35,19 @@ export function CirculationView() {
         else { const user = users.find((u) => u.id === card.trim() || u.code.toUpperCase() === card.trim().toUpperCase()); if (!user) { toast.error('Carnet de usuario no reconocido.'); return } process(actions.checkout(user.id, code)) }
       }} />
     </Card>
+    <section className="space-y-3"><SectionTitle title="Sanciones pendientes" />
+      {fines.filter(f => f.status === 'pending').map(f => <Card key={f.id} className="p-4"><p>{users.find(u => u.id === f.userId)?.name} · {money(f.amount)}</p>
+        <Button size="sm" onClick={async () => { const r = await actions.payFine(f.id); r.ok ? toast.success('Pago registrado') : toast.error(r.error) }}>Registrar pago</Button></Card>)}
+      {!fines.some(f => f.status === 'pending') && <p>Sin pagos pendientes.</p>}</section>
+    <section className="space-y-3"><SectionTitle title="Incidencias" />
+      <form className="grid gap-2" onSubmit={async e => { e.preventDefault(); const r = await actions.reportIncident(loanId,tipo,descripcion); if (r.ok) { setDescripcion(''); toast.success('Incidencia registrada') } else toast.error(r.error) }}>
+        <select aria-label="Préstamo" value={loanId} required onChange={e => setLoanId(e.target.value)}><option value="">Selecciona un préstamo</option>{loans.map(l => <option key={l.id} value={l.id}>{books.find(b => b.id === l.bookId)?.title} · {l.copyId ?? 'Digital'} · {users.find(u => u.id === l.userId)?.name}</option>)}</select>
+        <select aria-label="Tipo de incidencia" value={tipo} onChange={e => setTipo(e.target.value)}><option value="dano">Daño</option><option value="perdida">Pérdida</option><option value="otro">Otro</option></select>
+        <textarea aria-label="Descripción de la incidencia" required maxLength={2000} value={descripcion} onChange={e => setDescripcion(e.target.value)} />
+        <Button type="submit">Registrar incidencia</Button>
+      </form>{incidencias.map(i => <p key={i.id}>{i.tipo} · {i.descripcion} · {i.estado}</p>)}</section>
     <Dialog open={!!receipt} onOpenChange={(open) => { if (!open) setReceipt(null) }} title={receipt?.kind === 'return' ? 'Recibo de devolución' : 'Recibo de préstamo'} description="Verifica el ejemplar y la identidad del usuario en mostrador.">
-      {receipt && <div className="space-y-3"><h3 className="font-semibold">{receipt.book.title}</h3><p>{receipt.user.name} · {receipt.user.code}</p><p>{receipt.loan.copyId} · {fmtDateTime(receipt.at)}</p><p>Vencimiento: {fmtDateTime(receipt.loan.dueAt)}</p>{fine ? <div className="space-y-3"><p>{fine.days} días de mora · {money(fine.amount)} · {fine.status === 'paid' ? 'Pagada' : 'Pendiente'}</p>{fine.status === 'pending' && <Button onClick={async () => { const r = await actions.payFine(fine.id); r.ok ? toast.success('Pago registrado') : toast.error(r.error) }}>Registrar cobro de multa</Button>}</div> : receipt.kind === 'return' && <p>Devuelto a tiempo. Sin multa.</p>}</div>}
+      {receipt && <div className="space-y-3"><h3 className="font-semibold">{receipt.receipts?.map(r => r.book.title + ' · ' + r.loan.copyId).join(' / ') ?? receipt.book.title}</h3><p>{receipt.user.name} · {receipt.user.code}</p><p>{receipt.loan.copyId} · {fmtDateTime(receipt.at)}</p><p>Vencimiento: {fmtDateTime(receipt.loan.dueAt)}</p>{fine ? <div className="space-y-3"><p>{fine.days} días de mora · {money(fine.amount)} · {fine.status === 'paid' ? 'Pagada' : 'Pendiente'}</p>{fine.status === 'pending' && <Button onClick={async () => { const r = await actions.payFine(fine.id); r.ok ? toast.success('Pago registrado') : toast.error(r.error) }}>Registrar cobro de multa</Button>}</div> : receipt.kind === 'return' && <p>Devuelto a tiempo. Sin multa.</p>}</div>}
     </Dialog>
   </div>
 }

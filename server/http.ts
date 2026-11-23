@@ -8,10 +8,13 @@ export class HttpError extends Error {
 export const fail = (status: number, message: string): never => { throw new HttpError(status, message) }
 export const route = (handler: (req: Request, res: Response) => Promise<unknown>): RequestHandler => (req, res, next) => { Promise.resolve(handler(req, res)).catch(next) }
 export const idSchema = z.string().trim().min(1).max(200)
-export const paramId = (req: Request) => idSchema.parse(req.params.id)
+export const dbId = z.string().regex(/^[1-9]\d{0,18}$/).transform(BigInt).refine(n => n <= 9223372036854775807n)
+export const paramId = (req: Request) => dbId.parse(req.params.id)
 export const emptyBody = z.object({}).strict()
 export const success = (res: Response, value: unknown = {}) => res.json(value)
 export function serialize(value: unknown): unknown {
+  if (typeof value === 'bigint') return String(value)
+  if (value instanceof Prisma.Decimal) return Number(value)
   if (value instanceof Date) return value.getTime()
   if (Array.isArray(value)) return value.map(serialize)
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'passwordHash').map(([key, v]) => [key, serialize(v)]))

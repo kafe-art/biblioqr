@@ -1,13 +1,14 @@
 import { Router, type Request, type Response } from 'express'
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { rateLimit } from 'express-rate-limit'
-import type { User } from '@prisma/client'
+import { userDto } from '../dto'
+import type { Usuario } from '@prisma/client'
 import { z } from 'zod'
 import { actor, checkPassword, cookieOptions, hashPassword, issueJwt, requireAuth, requirePermission, SESSION_MS } from '../auth'
 import { db, transaction, type Tx } from '../db'
 import { audit, snapshot } from '../domain'
 import { env } from '../env'
-import { emptyBody, fail, route, serialize } from '../http'
+import { emptyBody, fail, route } from '../http'
 import { sendCodeEmail, type CodePurpose } from '../mail'
 
 export const authRoutes = Router()
@@ -62,17 +63,17 @@ export async function codeFromEmail(tx: Tx, address: string, prefix = '') {
   const base = prefix + address.split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 30) || prefix + 'USUARIO'
   for (let n = 0; ; n++) {
     const code = n ? `${base}-${n + 1}` : base
-    if (!await tx.user.findUnique({ where: { code } })) return code
+    if (!await tx.usuario.findUnique({ where: { codigoUsuario: code } })) return code
   }
 }
 
-async function startSession(req: Request, res: Response, user: User, detail: string) {
+async function startSession(req: Request, res: Response, user: Usuario, detail: string) {
   const current = await transaction(async tx => {
-    const updated = await tx.user.update({ where: { id: user.id }, data: { lastAccess: new Date(), ip: req.ip ?? '' } })
-    await audit(tx, updated, 'auth', detail)
+    const updated = await tx.usuario.update({ where: { id: user.id }, data: { ultimoAcceso: new Date(), ip: req.ip ?? '' } })
+    await audit(tx, updated, 'auth', detail, 'usuarios', user.id, { ultimoAcceso: user.ultimoAcceso }, { ultimoAcceso: updated.ultimoAcceso })
     return updated
   })
-  res.cookie('session', issueJwt(current), { ...cookieOptions, maxAge: SESSION_MS }).json({ user: serialize(current) })
+  res.cookie('session', issueJwt(current), { ...cookieOptions, maxAge: SESSION_MS }).json({ user: userDto(current) })
 }
 
 authRoutes.get('/auth/config', (_req, res) => { res.json({ studentDomain: env.STUDENT_EMAIL_DOMAIN }) })
@@ -81,8 +82,8 @@ authRoutes.get('/auth/config', (_req, res) => { res.json({ studentDomain: env.ST
 authRoutes.post('/auth/send-otp', limiter(10), route(async (req, res) => {
   const input = z.object({ email }).strict().parse(req.body)
   if (!isStudentEmail(input.email)) fail(400, studentDomainError())
-  const existing = await db.user.findUnique({ where: { email: input.email } })
-  if (existing?.status === 'blocked') fail(403, 'Tu cuenta está bloqueada. Acércate a la biblioteca para más información.')
+  const existing = await db.usuario.findUnique({ where: { email: input.email } })
+  if (existing && !existing.activo) fail(403, 'Tu cuenta está bloqueada. Acércate a la biblioteca para más información.')
   await issueCode(input.email, 'login')
   res.json({ ok: true, expiresInMinutes: CODE_MINUTES, resendInSeconds: RESEND_SECONDS })
 }))
@@ -91,11 +92,11 @@ authRoutes.post('/auth/verify-otp', limiter(30), route(async (req, res) => {
   const input = z.object({ email, otp }).strict().parse(req.body)
   if (!isStudentEmail(input.email)) fail(400, studentDomainError())
   await consumeCode(input.email, 'login', input.otp)
-  let user = await db.user.findUnique({ where: { email: input.email } })
-  if (user?.status === 'blocked') fail(403, 'Tu cuenta está bloqueada. Acércate a la biblioteca para más información.')
+  let user = await db.usuario.findUnique({ where: { email: input.email } })
+  if (user && !user.activo) fail(403, 'Tu cuenta está bloqueada. Acércate a la biblioteca para más información.')
   if (!user) {
     user = await transaction(async tx => {
-      const created = await tx.user.create({ data: { email: input.email, name: nameFromEmail(input.email), role: 'student', code: await codeFromEmail(tx, input.email) } })
+      const created = await tx.usuario.create({ data: { email: input.email, nombres: nameFromEmail(input.email), rol: 'student', codigoUsuario: await codeFromEmail(tx, input.email) } })
       await audit(tx, created, 'user', `Registro de estudiante ${created.id} verificado por correo.`)
       return created
     })
@@ -107,15 +108,15 @@ authRoutes.post('/auth/verify-otp', limiter(30), route(async (req, res) => {
 const dummyHash = hashPassword(randomUUID())
 authRoutes.post('/auth/login', limiter(20), route(async (req, res) => {
   const input = z.object({ identifier: z.string().trim().min(1).max(254), password: z.string().min(1).max(128) }).strict().parse(req.body)
-  const user = await db.user.findFirst({ where: { OR: [{ email: input.identifier.toLowerCase() }, { code: input.identifier.toUpperCase() }] } })
+  const user = await db.usuario.findFirst({ where: { OR: [{ email: input.identifier.toLowerCase() }, { codigoUsuario: input.identifier.toUpperCase() }] } })
   const valid = await checkPassword(input.password, user?.passwordHash || await dummyHash)
-  if (!user || !user.passwordHash || !valid || user.status === 'blocked') fail(401, 'Correo o contraseña incorrectos.')
+  if (!user || !user.passwordHash || !valid || !user.activo) fail(401, 'Correo o contraseña incorrectos.')
   await startSession(req, res, user!, 'Inicio de sesión con contraseña.')
 }))
 
 const staffAccount = async (address: string) => {
-  const user = await db.user.findUnique({ where: { email: address } })
-  return user && user.role !== 'student' && user.status === 'active' ? user : null
+  const user = await db.usuario.findUnique({ where: { email: address } })
+  return user && user.rol !== 'student' && user.activo ? user : null
 }
 // Always answers the same way so the endpoint does not reveal which emails have access.
 authRoutes.post('/auth/staff/send-code', limiter(10), route(async (req, res) => {
@@ -129,7 +130,7 @@ authRoutes.post('/auth/staff/password', limiter(30), route(async (req, res) => {
   const user = await staffAccount(input.email)
   if (!user) fail(400, 'El código caducó o ya fue usado. Solicita uno nuevo.')
   await consumeCode(input.email, 'password', input.otp)
-  const updated = await db.user.update({ where: { id: user!.id }, data: { passwordHash: await hashPassword(input.password) } })
+  const updated = await db.usuario.update({ where: { id: user!.id }, data: { passwordHash: await hashPassword(input.password) } })
   await startSession(req, res, updated, 'Contraseña creada con código por correo.')
 }))
 
@@ -138,5 +139,5 @@ authRoutes.post('/auth/logout', requireAuth, route(async (req, res) => {
   await transaction(tx => audit(tx, actor(req), 'auth', 'Cierre de sesión.'))
   res.clearCookie('session', cookieOptions).json({ ok: true })
 }))
-authRoutes.get('/me', requireAuth, route(async (req, res) => res.json({ user: serialize(actor(req)) })))
+authRoutes.get('/me', requireAuth, route(async (req, res) => res.json({ user: userDto(actor(req)) })))
 authRoutes.get('/state', requireAuth, requirePermission('catalog:read'), route(async (req, res) => res.json(await snapshot(actor(req)))))

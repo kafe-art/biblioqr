@@ -45,19 +45,17 @@ app.use(errorHandler)
 async function start() {
   await db.$connect()
   // Database-level append-only enforcement, even for accidental ORM updates.
-  if (env.DATABASE_URL.startsWith('file:')) {
-    await db.$executeRaw`CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON "AuditEntry" BEGIN SELECT RAISE(ABORT, 'AuditEntry append-only'); END`
-    await db.$executeRaw`CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON "AuditEntry" BEGIN SELECT RAISE(ABORT, 'AuditEntry append-only'); END`
-  } else {
-    await db.$executeRaw`CREATE OR REPLACE FUNCTION audit_immutable() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''AuditEntry append-only''; END;'`
-    await db.$executeRaw`DROP TRIGGER IF EXISTS audit_immutable_trigger ON "AuditEntry"`
-    await db.$executeRaw`CREATE TRIGGER audit_immutable_trigger BEFORE UPDATE OR DELETE OR TRUNCATE ON "AuditEntry" FOR EACH STATEMENT EXECUTE FUNCTION audit_immutable()`
-  }
+  await db.$transaction(async tx => {
+    await tx.$executeRaw`CREATE OR REPLACE FUNCTION audit_immutable() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RAISE EXCEPTION ''Auditoría inmutable''; END;'`
+    await tx.$executeRaw`DROP TRIGGER IF EXISTS audit_immutable_trigger ON auditoria`
+    await tx.$executeRaw`CREATE TRIGGER audit_immutable_trigger BEFORE UPDATE OR DELETE OR TRUNCATE ON auditoria FOR EACH STATEMENT EXECUTE FUNCTION audit_immutable()`
+    await tx.$executeRaw`DO $guard$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'reserva_detalle'::regclass AND conname = 'detalle_posicion') THEN ALTER TABLE reserva_detalle ADD CONSTRAINT detalle_posicion CHECK (posicion BETWEEN 1 AND 3); END IF; END $guard$`
+  })
   // The owner's account (ADMIN_EMAIL) always exists as an active administrator.
   if (env.ADMIN_EMAIL) {
-    const owner = await db.user.findUnique({ where: { email: env.ADMIN_EMAIL } })
-    if (!owner) await db.user.create({ data: { email: env.ADMIN_EMAIL, name: nameFromEmail(env.ADMIN_EMAIL), role: 'admin', code: await codeFromEmail(db, env.ADMIN_EMAIL, 'P-') } })
-    else if (owner.role !== 'admin' || owner.status !== 'active') await db.user.update({ where: { id: owner.id }, data: { role: 'admin', status: 'active' } })
+    const owner = await db.usuario.findUnique({ where: { email: env.ADMIN_EMAIL } })
+    if (!owner) await db.usuario.create({ data: { email: env.ADMIN_EMAIL, nombres: nameFromEmail(env.ADMIN_EMAIL), rol: 'admin', codigoUsuario: await codeFromEmail(db, env.ADMIN_EMAIL, 'P-') } })
+    else if (owner.rol !== 'admin' || !owner.activo) await db.usuario.update({ where: { id: owner.id }, data: { rol: 'admin', activo: true } })
   }
   await sweepExpired()
   let sweeping = false

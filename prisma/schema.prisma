@@ -2,163 +2,303 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Provider is a migration-time choice: npm run db:provider -- sqlite|postgresql.
 datasource db {
-  provider = "sqlite"
-  url = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
   student
   librarian
   admin
+
+  @@map("rol_usuario")
 }
-enum UserStatus {
-  active
-  blocked
-}
-enum CopyCondition {
-  excelente
-  regular
-  mantenimiento
-  baja
-}
-enum CopyStatus {
-  available
-  loaned
-  reserved
-}
+
 enum ReservationStatus {
   pending
   ready
   collected
   expired
   cancelled
+  returned
+
+  @@map("estado_reserva")
 }
-enum PickupMethod {
-  desk
-  locker
+
+enum CopyStatus {
+  available
+  reserved
+  loaned
+
+  @@map("estado_ejemplar")
 }
+
+enum CopyCondition {
+  excelente
+  regular
+  mantenimiento
+  baja
+
+  @@map("condicion_ejemplar")
+}
+
 enum FineStatus {
   pending
   paid
   waived
-}
-model User {
-  id String @id @default(cuid())
-  code String @unique
-  email String @unique
-  name String
-  role Role
-  status UserStatus @default(active)
-  passwordHash String @default("")
-  faculty String @default("")
-  career String @default("")
-  ip String @default("")
-  lastAccess DateTime @default(now())
-  reservations Reservation[]
-  loans Loan[]
-  fines Fine[]
-}
-model Book {
-  id String @id @default(cuid())
-  isbn String @unique
-  title String
-  author String
-  year Int
-  genre String
-  faculties Json
-  synopsis String
-  format String
-  pages Int
-  location Json
-  addedAt DateTime @default(now())
-  demand Int @default(0)
-  coverUrl String?
-  copies Copy[]
-  reservations Reservation[]
-  loans Loan[]
-  fines Fine[]
-}
-model Copy {
-  id String @id @default(cuid())
-  bookId String
-  book Book @relation(fields: [bookId], references: [id])
-  condition CopyCondition @default(excelente)
-  status CopyStatus @default(available)
-  reservations Reservation[]
-  loans Loan[]
-  @@index([bookId, status])
-}
-model Reservation {
-  id String @id @default(cuid())
-  code String @unique
-  bookId String
-  copyId String
-  userId String
-  createdAt DateTime @default(now())
-  pickupAt DateTime
-  expiresAt DateTime
-  method PickupMethod
-  locker String?
-  status ReservationStatus @default(pending)
-  nonce String @unique
-  consumedAt DateTime?
-  book Book @relation(fields: [bookId], references: [id])
-  copy Copy @relation(fields: [copyId], references: [id])
-  user User @relation(fields: [userId], references: [id])
-  @@index([status, expiresAt])
-  @@index([userId, bookId])
-}
-model Loan {
-  id String @id @default(cuid())
-  bookId String
-  copyId String?
-  userId String
-  loanedAt DateTime @default(now())
-  dueAt DateTime
-  returnedAt DateTime?
-  renewals Int @default(0)
-  book Book @relation(fields: [bookId], references: [id])
-  copy Copy? @relation(fields: [copyId], references: [id])
-  user User @relation(fields: [userId], references: [id])
-  fines Fine[]
-  @@index([copyId, returnedAt])
-  @@index([userId, returnedAt])
-}
-model Fine {
-  id String @id @default(cuid())
-  userId String
-  loanId String @unique
-  bookId String
-  days Int
-  amount Float
-  createdAt DateTime @default(now())
-  status FineStatus @default(pending)
-  user User @relation(fields: [userId], references: [id])
-  loan Loan @relation(fields: [loanId], references: [id])
-  book Book @relation(fields: [bookId], references: [id])
-}
-// Only insertion and reading are exposed; server startup installs database guards.
-model AuditEntry {
-  id String @unique @default(cuid())
-  seq Int @id @default(autoincrement())
-  ts DateTime @default(now())
-  actorName String
-  actorRole String
-  action String
-  detail String
-  ip String
+
+  @@map("estado_sancion")
 }
 
-// Single-use email verification codes (student login and staff password setup).
+enum TipoIncidencia {
+  mora
+  dano
+  perdida
+  otro
+
+  @@map("tipo_incidencia")
+}
+
+enum EstadoIncidencia {
+  abierta
+  resuelta
+
+  @@map("estado_incidencia")
+}
+
+enum TipoNotificacion {
+  reserva
+  incidencia
+  sancion
+
+  @@map("tipo_notificacion")
+}
+
+enum EstadoNotificacion {
+  pendiente
+  enviada
+  leida
+
+  @@map("estado_notificacion")
+}
+
+enum PickupMethod {
+  desk
+  locker
+
+  @@map("metodo_retiro")
+}
+
+model Usuario {
+  id            BigInt         @id @default(autoincrement())
+  codigoUsuario String         @unique @map("codigo_usuario") @db.VarChar(40)
+  nombres       String         @db.VarChar(100)
+  apellidos     String         @default("") @db.VarChar(100)
+  email         String         @unique @db.VarChar(254)
+  passwordHash  String         @default("") @map("password_hash") @db.VarChar(255)
+  rol           Role
+  activo        Boolean        @default(true)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  ultimoAcceso  DateTime       @default(now()) @map("ultimo_acceso") @db.Timestamptz
+  facultad      String         @default("")
+  carrera       String         @default("")
+  ip            String         @default("")
+  reservas      Reserva[]      @relation("lector")
+  retiros       Reserva[]      @relation("bibliotecario")
+  incidencias   Incidencia[]   @relation("afectado")
+  reportes      Incidencia[]   @relation("informante")
+  sanciones     Sancion[]      @relation("sancionado")
+  registros     Sancion[]      @relation("registrador")
+  avisos        Notificacion[]
+  auditoria     Auditoria[]
+
+  @@map("usuarios")
+}
+
+model Categoria {
+  id          BigInt  @id @default(autoincrement())
+  nombre      String  @unique @db.VarChar(100)
+  descripcion String? @db.VarChar(255)
+  libros      Libro[]
+
+  @@map("categorias")
+}
+
+model Libro {
+  id              BigInt           @id @default(autoincrement())
+  categoriaId     BigInt           @map("categoria_id")
+  categoria       Categoria        @relation(fields: [categoriaId], references: [id])
+  isbn            String           @unique @db.VarChar(20)
+  titulo          String           @db.VarChar(255)
+  autor           String           @db.VarChar(255)
+  editorial       String?          @db.VarChar(150)
+  anioPublicacion Int              @map("anio_publicacion") @db.SmallInt
+  descripcion     String
+  portadaPath     String?          @map("portada_path") @db.VarChar(300)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  formato         String
+  paginas         Int
+  facultades      String[]
+  demanda         Int              @default(0)
+  ubicacion       Json
+  ejemplares      Ejemplar[]
+  detalles        ReservaDetalle[]
+
+  @@map("libros")
+}
+
+model Ejemplar {
+  id               BigInt           @id @default(autoincrement())
+  libroId          BigInt           @map("libro_id")
+  libro            Libro            @relation(fields: [libroId], references: [id])
+  codigoInventario String           @unique @default(cuid()) @map("codigo_inventario") @db.VarChar(30)
+  ubicacion        String           @default("") @db.VarChar(100)
+  estado           CopyStatus       @default(available)
+  condicion        CopyCondition    @default(excelente)
+  detalles         ReservaDetalle[]
+
+  @@unique([id, libroId])
+  @@index([libroId, estado])
+  @@map("ejemplares")
+}
+
+model Reserva {
+  id               BigInt            @id @default(autoincrement())
+  codigoReserva    String            @unique @default(uuid()) @map("codigo_reserva") @db.Uuid
+  usuarioId        BigInt            @map("usuario_id")
+  usuario          Usuario           @relation("lector", fields: [usuarioId], references: [id])
+  bibliotecarioId  BigInt?           @map("bibliotecario_id")
+  bibliotecario    Usuario?          @relation("bibliotecario", fields: [bibliotecarioId], references: [id])
+  estado           ReservationStatus @default(pending)
+  fechaReserva     DateTime          @default(now()) @map("fecha_reserva") @db.Timestamptz
+  fechaExpiracion  DateTime          @map("fecha_expiracion") @db.Timestamptz
+  fechaRetiro      DateTime?         @map("fecha_retiro") @db.Timestamptz
+  retiroProgramado DateTime          @map("retiro_programado") @db.Timestamptz
+  nonce            String            @unique @default(uuid())
+  consumidoEn      DateTime?         @map("consumido_en") @db.Timestamptz
+  metodoRetiro     PickupMethod      @map("metodo_retiro")
+  casillero        String?
+  detalles         ReservaDetalle[]
+  avisos           Notificacion[]
+
+  @@index([estado, fechaExpiracion])
+  @@map("reservas")
+}
+
+model ReservaDetalle {
+  id               BigInt            @id @default(autoincrement())
+  reservaId        BigInt            @map("reserva_id")
+  reserva          Reserva           @relation(fields: [reservaId], references: [id])
+  posicion         Int               @db.SmallInt
+  libroId          BigInt            @map("libro_id")
+  libro            Libro             @relation(fields: [libroId], references: [id])
+  ejemplarId       BigInt?           @map("ejemplar_id")
+  ejemplar         Ejemplar?         @relation(fields: [ejemplarId, libroId], references: [id, libroId])
+  estado           ReservationStatus @default(pending)
+  fechaLimiteDevol DateTime?         @map("fecha_limite_devol") @db.Timestamptz
+  fechaDevolucion  DateTime?         @map("fecha_devolucion") @db.Timestamptz
+  renovaciones     Int               @default(0)
+  incidencias      Incidencia[]
+  avisos           Notificacion[]
+
+  @@unique([reservaId, posicion])
+  @@unique([reservaId, libroId])
+  @@index([ejemplarId, estado])
+  @@map("reserva_detalle")
+}
+
+model Incidencia {
+  id               BigInt           @id @default(autoincrement())
+  usuarioId        BigInt           @map("usuario_id")
+  usuario          Usuario          @relation("afectado", fields: [usuarioId], references: [id])
+  reservaDetalleId BigInt           @map("reserva_detalle_id")
+  detalle          ReservaDetalle   @relation(fields: [reservaDetalleId], references: [id])
+  registradoPor    BigInt           @map("registrado_por")
+  registrador      Usuario          @relation("informante", fields: [registradoPor], references: [id])
+  tipo             TipoIncidencia
+  descripcion      String
+  estado           EstadoIncidencia @default(abierta)
+  evidencias       String[]
+  fechaIncidencia  DateTime         @default(now()) @map("fecha_incidencia") @db.Timestamptz
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  sanciones        Sancion[]
+
+  @@map("incidencias")
+}
+
+model Sancion {
+  id              BigInt         @id @default(autoincrement())
+  usuarioId       BigInt         @map("usuario_id")
+  usuario         Usuario        @relation("sancionado", fields: [usuarioId], references: [id])
+  incidenciaId    BigInt         @map("incidencia_id")
+  incidencia      Incidencia     @relation(fields: [incidenciaId], references: [id])
+  registradoPor   BigInt         @map("registrado_por")
+  registrador     Usuario        @relation("registrador", fields: [registradoPor], references: [id])
+  monto           Decimal        @db.Decimal(10, 2)
+  dias            Int            @default(0)
+  estado          FineStatus     @default(pending)
+  fechaInicio     DateTime       @default(now()) @map("fecha_inicio") @db.Timestamptz
+  fechaFin        DateTime?      @map("fecha_fin") @db.Timestamptz
+  fechaResolucion DateTime?      @map("fecha_resolucion") @db.Timestamptz
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  avisos          Notificacion[]
+
+  @@map("sanciones")
+}
+
+model Notificacion {
+  id               BigInt             @id @default(autoincrement())
+  usuarioId        BigInt             @map("usuario_id")
+  usuario          Usuario            @relation(fields: [usuarioId], references: [id])
+  reservaId        BigInt?            @map("reserva_id")
+  reserva          Reserva?           @relation(fields: [reservaId], references: [id])
+  reservaDetalleId BigInt?            @map("reserva_detalle_id")
+  detalle          ReservaDetalle?    @relation(fields: [reservaDetalleId], references: [id])
+  sancionId        BigInt?            @map("sancion_id")
+  sancion          Sancion?           @relation(fields: [sancionId], references: [id])
+  tipo             TipoNotificacion
+  asunto           String             @db.VarChar(150)
+  mensaje          String
+  estado           EstadoNotificacion @default(pendiente)
+  fechaProgramada  DateTime           @default(now()) @map("fecha_programada") @db.Timestamptz
+  fechaEnvio       DateTime?          @map("fecha_envio") @db.Timestamptz
+  intentos         Int                @default(0) @db.SmallInt
+  errorDetalle     String?            @map("error_detalle")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("notificaciones")
+}
+
+model Auditoria {
+  id              BigInt   @id @default(autoincrement())
+  seq             BigInt   @unique @default(autoincrement())
+  usuarioId       BigInt?  @map("usuario_id")
+  usuario         Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  accion          String   @db.VarChar(30)
+  entidad         String   @db.VarChar(50)
+  entidadId       BigInt?  @map("entidad_id")
+  datosAnteriores Json?    @map("datos_anteriores")
+  datosNuevos     Json?    @map("datos_nuevos")
+  ipOrigen        String?  @map("ip_origen") @db.Inet
+  actorRol        String   @map("actor_rol")
+  actorNombre     String   @map("actor_nombre")
+  descripcion     String
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("auditoria")
+}
+
 model EmailCode {
-  id String @id @default(cuid())
-  email String
-  purpose String
-  codeHash String
-  attempts Int @default(0)
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id        BigInt   @id @default(autoincrement())
+  email     String
+  purpose   String
+  codeHash  String   @map("code_hash")
+  attempts  Int      @default(0)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
   @@index([email, purpose])
+  @@map("email_codes")
 }

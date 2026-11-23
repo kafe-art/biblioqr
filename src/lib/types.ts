@@ -32,6 +32,7 @@ export interface Book {
   id: string
   isbn: string
   title: string
+  editorial?: string | null
   author: string
   year: number
   genre: string
@@ -77,6 +78,7 @@ export type ReservationStatus = 'pending' | 'ready' | 'collected' | 'expired' | 
 export type PickupMethod = 'desk' | 'locker'
 
 export interface Reservation {
+  details?: { id: string; bookId: string; copyId: string | null; status: string }[]
   qrToken?: string
   nonce?: string
   consumedAt?: number | null
@@ -109,7 +111,9 @@ export type AuditAction = 'loan' | 'return' | 'renewal' | 'reservation' | 'inven
 
 export interface AuditEntry {
   id: string
-  seq: number
+  before?: unknown
+  after?: unknown
+  seq: number | string
   ts: number
   actorName: string
   actorRole: Role | 'system'
