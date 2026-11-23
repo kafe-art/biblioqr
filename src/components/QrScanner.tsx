@@ -1,13 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import jsQR from 'jsqr'
 import { toast } from 'sonner'
 import { feedback } from '../lib/feedback'
 import { Button, Field, inputCls } from './ui/primitives'
 
-export function QrScanner({ onScan, label = 'Código QR o código de barras' }: { onScan: (code: string) => void; label?: string }) {
+export function QrScanner({ onScan, label = 'Código QR o código de barras', busy = false, submitLabel = 'Procesar código', cameraDefault = false, inputRef, rejected = false }: {
+  onScan: (code: string) => void; label?: string; busy?: boolean; submitLabel?: string
+  cameraDefault?: boolean; inputRef?: RefObject<HTMLInputElement | null>; rejected?: boolean
+}) {
   const [value, setValue] = useState('')
-  const [camera, setCamera] = useState(false)
+  const [camera, setCamera] = useState(cameraDefault)
   const [status, setStatus] = useState('Escáner listo para lectura manual o con pistola.')
+  const lastCode = useRef('')
+  useEffect(() => {
+    if (rejected) {
+      setValue(lastCode.current)
+      requestAnimationFrame(() => inputRef?.current?.select())
+    }
+  }, [rejected, inputRef])
   const video = useRef<HTMLVideoElement>(null)
   const handler = useRef(onScan)
   handler.current = onScan
@@ -33,7 +43,8 @@ export function QrScanner({ onScan, label = 'Código QR o código de barras' }: 
           setCamera(false)
           setStatus(`Código leído: ${code.data}`)
           feedback.scan()
-          handler.current(code.data.trim())
+          lastCode.current = code.data.trim()
+          handler.current(lastCode.current)
           return
         }
       }
@@ -58,11 +69,11 @@ export function QrScanner({ onScan, label = 'Código QR o código de barras' }: 
     return () => { cancelled = true; cancelAnimationFrame(frame); stream?.getTracks().forEach((t) => t.stop()); if (video.current) video.current.srcObject = null }
   }, [camera])
   return <div className="space-y-3">
-    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); const code = value.trim(); if (!code) { toast.error('Introduce un código.'); return } setCamera(false); setStatus(`Código leído: ${code}`); feedback.scan(); onScan(code); setValue('') }}>
-      <Field label={label} hint="Escanea con la pistola y pulsa Enter, o escribe el código.">{(id) => <input id={id} className={inputCls} autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />}</Field>
-      <div className="flex flex-wrap gap-2"><Button type="submit">Procesar código</Button><Button variant="secondary" onClick={() => setCamera((v) => !v)}>{camera ? 'Detener cámara' : 'Activar cámara QR'}</Button></div>
+    <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); if (busy) return; const code = value.trim(); if (!code) { toast.error('Introduce un código.'); return } setCamera(false); setStatus(`Código leído: ${code}`); feedback.scan(); lastCode.current = code; onScan(code); setValue('') }}>
+      <Field label={label} hint="Escanea con la pistola y pulsa Enter, o escribe el código.">{(id) => <input ref={inputRef} aria-busy={busy} disabled={busy} id={id} className={inputCls} autoComplete="off" value={value} onChange={(e) => setValue(e.target.value)} />}</Field>
+      <div className="flex flex-wrap gap-2"><Button size="lg" type="submit" disabled={busy || !value.trim()}>{busy ? 'Registrando…' : submitLabel}</Button><Button disabled={busy} variant="secondary" onClick={() => setCamera((v) => !v)}>{camera ? 'Detener cámara' : 'Activar cámara QR'}</Button></div>
     </form>
-    {camera && <video ref={video} muted playsInline className="max-h-72 w-full rounded-xl bg-black" aria-label="Vista de cámara para lectura QR" />}
+    {camera && <video ref={video} muted playsInline className="max-h-72 w-full rounded-xl bg-surface-2" aria-label="Vista de cámara para lectura QR" />}
     <p role="status" aria-live="polite" className="text-sm text-muted">{status}</p>
   </div>
 }

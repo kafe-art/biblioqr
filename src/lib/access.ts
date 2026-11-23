@@ -1,4 +1,4 @@
-import { BarChart3, BookCopy, BookOpen, KanbanSquare, Library, Map, ScanLine, ScrollText, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, BookCopy, BookOpen, KanbanSquare, LayoutDashboard, Library, Map, ScanLine, ScrollText, Users, type LucideIcon } from 'lucide-react'
 import type { Role } from './types'
 import type { Permission } from '../../shared/access'
 export { PERMISSIONS, can, ROLE_LABEL } from '../../shared/access'
@@ -23,6 +23,7 @@ export const NAV: Record<Role, NavItem[]> = {
     { id: 'casillero', label: 'Mi casillero', icon: Library, permission: 'loan:renew' },
   ],
   librarian: [
+    { id: 'hoy', label: 'Hoy', icon: LayoutDashboard, permission: 'circulation:write' },
     { id: 'circulacion', label: 'Circulación', icon: ScanLine, permission: 'circulation:write' },
     { id: 'reservas', label: 'Reservas', icon: KanbanSquare, permission: 'reservation:manage' },
     { id: 'mapa', label: 'Ubicación', icon: Map, permission: 'inventory:locate' },

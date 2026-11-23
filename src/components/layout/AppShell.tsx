@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { LogOut, Moon, QrCode, Search, Sun } from 'lucide-react'
-import { useEffect, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useState, type ComponentType } from 'react'
 import { NAV, ROLE_LABEL, can } from '../../lib/access'
 import { accountLight } from '../../lib/rules'
 import { useTheme } from '../../lib/theme'
@@ -10,6 +10,8 @@ import { AnalyticsView } from '../../features/admin/AnalyticsView'
 import { AuditView } from '../../features/admin/AuditView'
 import { CatalogView } from '../../features/admin/CatalogView'
 import { UsersView } from '../../features/admin/UsersView'
+import { TodayView } from '../../features/librarian/TodayView'
+import { DeskContext, modes, type DeskRequest } from '../../features/librarian/desk'
 import { CirculationView } from '../../features/librarian/CirculationView'
 import { LibraryMapView } from '../../features/librarian/LibraryMapView'
 import { ReservationsView } from '../../features/librarian/ReservationsView'
@@ -24,7 +26,7 @@ import { CommandBar } from './CommandBar'
  *  permiso de la vista antes de renderizarla. */
 const VIEWS: Record<Role, Record<string, ComponentType>> = {
   student: { inicio: HomeView, casillero: LockerView },
-  librarian: { circulacion: CirculationView, reservas: ReservationsView, mapa: LibraryMapView },
+  librarian: { hoy: TodayView, circulacion: CirculationView, reservas: ReservationsView, mapa: LibraryMapView },
   admin: { analitica: AnalyticsView, usuarios: UsersView, catalogo: CatalogView, auditoria: AuditView },
 }
 
@@ -57,6 +59,26 @@ const LIGHT_DOT = { green: 'bg-emerald-500', amber: 'bg-amber-500', red: 'bg-ros
 export function AppShell({ user }: { user: User }) {
   const { view, loans, fines, actions } = useLibrary()
   const [commandOpen, setCommandOpen] = useState(false)
+  const [request, setRequest] = useState<DeskRequest>({})
+  const go = useCallback((target: string, next: DeskRequest = {}, book?: string) => {
+    setRequest(next)
+    if (book) actions.focusBook(book, target)
+    else actions.navigate(target)
+  }, [actions])
+  useEffect(() => {
+    if (user.role !== 'librarian') return
+    const shortcut = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLElement && event.target.closest('textarea, select, [role="dialog"]')) return
+      const mode = modes.find(m => m.key === event.key)
+      const page = event.altKey && /^[1-4]$/.test(event.key) ? NAV.librarian[Number(event.key) - 1] : null
+      if (!mode && !page) return
+      event.preventDefault()
+      if (mode) go('circulacion', { mode: mode.value })
+      else if (page) go(page.id)
+    }
+    window.addEventListener('keydown', shortcut)
+    return () => window.removeEventListener('keydown', shortcut)
+  }, [go, user.role])
   const nav = NAV[user.role].filter((item) => can(user.role, item.permission))
   const current = nav.find((n) => n.id === view) ?? nav[0]
   const View = VIEWS[user.role][current.id]
@@ -82,7 +104,7 @@ export function AppShell({ user }: { user: User }) {
             key={item.id}
             type="button"
             aria-current={active ? 'page' : undefined}
-            onClick={() => actions.navigate(item.id)}
+            onClick={() => user.role === 'librarian' ? go(item.id) : actions.navigate(item.id)}
             className={cn('relative flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap transition-colors', active ? 'text-fg' : 'text-muted hover:text-fg')}
           >
             {active && <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-lg bg-surface-2" transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }} />}
@@ -111,7 +133,7 @@ export function AppShell({ user }: { user: User }) {
           <button
             type="button"
             onClick={() => setCommandOpen(true)}
-            className="ml-auto flex h-9 items-center gap-2 rounded-lg border border-line bg-surface/70 px-3 text-sm text-muted transition-colors hover:border-line-strong hover:text-fg sm:w-64"
+            className={cn(user.role === 'librarian' && 'md:max-lg:w-auto! md:max-lg:[&>span:not(.sr-only)]:sr-only md:max-lg:[&>kbd]:hidden', "ml-auto flex h-9 items-center gap-2 rounded-lg border border-line bg-surface/70 px-3 text-sm text-muted transition-colors hover:border-line-strong hover:text-fg sm:w-64")}
           >
             <Search size={15} aria-hidden />
             <span className="hidden flex-1 text-left sm:block">Buscar título, autor, ISBN…</span>
@@ -133,6 +155,7 @@ export function AppShell({ user }: { user: User }) {
         <nav aria-label="Principal" className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-line px-3 py-1.5 md:hidden">{navLinks}</nav>
       </header>
 
+      <DeskContext.Provider value={{ request, go }}>
       <main id="contenido" className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={`${user.role}-${current.id}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
@@ -140,6 +163,7 @@ export function AppShell({ user }: { user: User }) {
           </motion.div>
         </AnimatePresence>
       </main>
+      </DeskContext.Provider>
 
       <CommandBar open={commandOpen} onOpenChange={setCommandOpen} />
       {user.role === 'student' && <BookSheet />}

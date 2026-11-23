@@ -53,11 +53,20 @@ export type UserBulkOp = { type: 'activate' } | { type: 'block' } | { type: 'res
 
 const emptyState: State = { users: [], books: [], loans: [], reservations: [], fines: [], incidencias: [], avisos: [], audit: [], wishlist: {}, sessionUserId: null, view: 'inicio', focusBookId: null }
 
-export function createActions(get: () => State, set: (next: State) => void) {
+export function createActions(get: () => State, set: (next: State) => void, onRefresh?: (session: string | null, status: 'loading' | 'ready' | 'error') => void) {
   const refresh = async () => {
-    const [state, configuration] = await Promise.all([api<Omit<State, 'wishlist' | 'sessionUserId' | 'view' | 'focusBookId'>>('/state'), api<{policy: Parameters<typeof applyPolicy>[0]}>('/policy')])
-    applyPolicy(configuration.policy)
-    set({ ...get(), ...state })
+    const session = get().sessionUserId
+    onRefresh?.(session, 'loading')
+    try {
+      const [state, configuration] = await Promise.all([api<Omit<State, 'wishlist' | 'sessionUserId' | 'view' | 'focusBookId'>>('/state'), api<{policy: Parameters<typeof applyPolicy>[0]}>('/policy')])
+      if (get().sessionUserId !== session) return
+      applyPolicy(configuration.policy)
+      set({ ...get(), ...state })
+      onRefresh?.(session, 'ready')
+    } catch (error) {
+      if (get().sessionUserId === session) onRefresh?.(session, 'error')
+      throw error
+    }
   }
   const mutate = async <T,>(path: string, method: string, body: unknown, extract: (response: any) => T): Promise<Result<T>> => {
     try {
@@ -83,7 +92,7 @@ export function createActions(get: () => State, set: (next: State) => void) {
       try {
         const { user } = await api<{user: User}>('/me')
         set({ ...get(), users: [user], sessionUserId: user.id, view: homeView(user.role) })
-        await refresh()
+        try { await refresh() } catch (error) { if (user.role !== 'librarian') throw error; toast.error('No se pudieron actualizar los datos.') }
       } catch { set({ ...emptyState }) }
     },
     login(identifier: string, password: string) { return signIn('/auth/login', { identifier, password }) },
@@ -135,19 +144,22 @@ export function createActions(get: () => State, set: (next: State) => void) {
   }
 }
 export type Actions = ReturnType<typeof createActions>
-interface LibraryContext extends State { user: User | null; actions: Actions }
+interface LibraryContext extends State { loading: boolean; refreshError: boolean; user: User | null; actions: Actions }
 const Ctx = createContext<LibraryContext | null>(null)
 export function LibraryProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>(() => ({ ...emptyState }))
+  const [sync, setSync] = useState({ session: null as string | null, loaded: false, error: false })
   const ref = useRef(state)
-  const actions = useMemo(() => createActions(() => ref.current, next => { ref.current = next; setState(next) }), [])
+  const actions = useMemo(() => createActions(() => ref.current, next => { ref.current = next; setState(next) }, (session, status) => {
+    setSync(last => ({ session, loaded: status === 'ready' || (last.session === session && last.loaded), error: status === 'error' }))
+  }), [])
   useEffect(() => { void actions.restore() }, [actions])
   useEffect(() => {
     if (!state.sessionUserId) return
     const timer = setInterval(() => { void actions.refresh().catch(() => {}) }, 20000)
     return () => clearInterval(timer)
   }, [actions, state.sessionUserId])
-  const value = useMemo<LibraryContext>(() => ({ ...state, user: state.users.find(u => u.id === state.sessionUserId) ?? null, actions }), [state, actions])
+  const value = useMemo<LibraryContext>(() => ({ ...state, loading: !sync.error && (!sync.loaded || sync.session !== state.sessionUserId), refreshError: sync.error, user: state.users.find(u => u.id === state.sessionUserId) ?? null, actions }), [state, actions, sync])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 export function useLibrary() {
