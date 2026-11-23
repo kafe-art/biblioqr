@@ -31,7 +31,8 @@ circulationRoutes.post('/circulation/scan', requirePermission('circulation:write
   try { payload = verifyQr(qrToken, env.QR_HMAC_SECRET) } catch { return fail(401,'Ticket QR inválido.') }
   await sweepExpired()
   res.json(await transaction(async tx => {
-    const r = await tx.reserva.findUniqueOrThrow({ where: { id: dbId.parse(payload.rid) }, include: reservationInclude })
+    const r = await tx.reserva.findUnique({ where: { id: dbId.parse(payload.rid) }, include: reservationInclude })
+    if (!r) return fail(404,'La reserva de este ticket ya no existe. Pide al estudiante que genere una nueva.')
     const expected = ticketPayload(r)
     if (expected.cid !== payload.cid || expected.uid !== payload.uid || expected.nonce !== payload.nonce || expected.exp !== payload.exp) return fail(401,'El ticket no corresponde a la reserva.')
     if (r.consumidoEn) return fail(409,'El ticket ya fue canjeado.')
@@ -52,9 +53,11 @@ circulationRoutes.post('/circulation/scan', requirePermission('circulation:write
 circulationRoutes.post('/circulation/checkout', requirePermission('circulation:write'), route(async (req,res) => {
   const input = z.object({ userCode: idSchema, copyId: idSchema }).strict().parse(req.body)
   res.json(await transaction(async tx => {
-    const reader = await tx.usuario.findUniqueOrThrow({ where: { codigoUsuario: input.userCode.toUpperCase() } })
+    const reader = await tx.usuario.findUnique({ where: { codigoUsuario: input.userCode.toUpperCase() } })
+    if (!reader) return fail(404,'Carnet no registrado. Revisa el código del usuario.')
     await eligible(tx,reader.id,1)
-    const copy = await tx.ejemplar.findUniqueOrThrow({ where: { codigoInventario: input.copyId } })
+    const copy = await tx.ejemplar.findUnique({ where: { codigoInventario: input.copyId } })
+    if (!copy) return fail(404,'Ejemplar no registrado. Revisa el código de inventario de la etiqueta.')
     if (!await tx.ejemplar.updateMany({ where: { id: copy.id, estado: 'available', condicion: { in: [...lendable] } }, data: { estado: 'loaned' } }).then(r => r.count)) return fail(409,'Ejemplar no disponible.')
     return receipt(tx,await immediate(tx,reader,actor(req),copy.libroId,copy.id),'loan')
   }))
@@ -81,7 +84,7 @@ circulationRoutes.post('/circulation/checkin', requirePermission('circulation:wr
   const { copyId } = z.object({ copyId: idSchema }).strict().parse(req.body)
   res.json(await transaction(async tx => {
     const d = await tx.reservaDetalle.findFirst({ where: { ejemplar: { codigoInventario: copyId }, estado: 'collected' } })
-    if (!d) return fail(409,'El ejemplar no tiene un préstamo activo.')
+    if (!d) return fail(409,await tx.ejemplar.count({ where: { codigoInventario: copyId } }) ? 'El ejemplar no tiene un préstamo activo.' : 'Ejemplar no registrado. Revisa el código de inventario de la etiqueta.')
     return checkin(tx,d.id,actor(req))
   }))
 }))

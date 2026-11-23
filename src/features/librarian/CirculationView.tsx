@@ -6,7 +6,7 @@ import { feedback } from '../../lib/feedback'
 import { fmtDateTime } from '../../lib/format'
 import { daysLeft, eligibility, money, POLICY } from '../../lib/rules'
 import { useLibrary, type Receipt } from '../../store/library'
-import { bottomSheet, modes, Shortcut, useDesk, useMobile, type ScanMode } from './desk'
+import { bottomSheet, isTicketToken, modes, Shortcut, useDesk, useMobile, type ScanMode } from './desk'
 import { ResultCard } from './components/ResultCard'
 import { ScanPanel, type ScanState } from './components/ScanPanel'
 import { StatusPill } from './components/StatusPill'
@@ -60,24 +60,27 @@ export function CirculationView() {
     setMessage(text); setState('rejected'); feedback.error()
   }
   function checkCard() {
+    if (isTicketToken(card.trim())) { const token = card.trim(); setCard(''); void scan(token); return }
     if (!user) { reject('Carnet no reconocido. Revisa el código o busca por nombre.'); cardInput.current?.focus(); cardInput.current?.select(); return }
     setCardConfirmed(true)
     focusScan()
   }
   async function scan(code: string) {
     if (locked.current) return
-    if (mode === 'loan' && !user) { checkCard(); return }
-    if (mode === 'loan') setCardConfirmed(true)
+    const ticket = isTicketToken(code)
+    if (mode === 'loan' && !user && !ticket) { checkCard(); return }
+    if (mode === 'loan' && !ticket) setCardConfirmed(true)
     locked.current = true
     clearTimeout(timer.current)
     setReceipt(null); setState('busy'); setMessage('')
     try {
-      const r = mode === 'reservation' ? await actions.deliverReservation(code) : mode === 'return' ? await actions.checkin(code) : await actions.checkout(user!.id, code)
-      if (!r.ok) { reject(r.error + ' · ' + code); return }
+      const r = ticket || mode === 'reservation' ? await actions.deliverReservation(code) : mode === 'return' ? await actions.checkin(code) : await actions.checkout(user!.id, code)
+      // El token del ticket es largo e ilegible: solo se muestran códigos cortos (ejemplar, carnet).
+      if (!r.ok) { reject(ticket || code.length > 40 ? r.error : r.error + ' · ' + code); return }
       const data = r.data
       const warning = !!data.fine || (data.kind === 'loan' && daysLeft(data.loan.dueAt) <= POLICY.warnDays)
       setReceipt(data); setState(warning ? 'warning' : 'accepted')
-      setMessage(mode === 'reservation' ? 'Reserva entregada' : mode === 'loan' ? 'Préstamo registrado' : 'Devolución registrada')
+      setMessage(ticket || mode === 'reservation' ? 'Reserva entregada' : mode === 'loan' ? 'Préstamo registrado' : 'Devolución registrada')
       if (warning) feedback.warning()
       else feedback.success()
     } finally {

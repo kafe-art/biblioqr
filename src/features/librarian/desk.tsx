@@ -8,6 +8,9 @@ function subscribeMobile(update: () => void) {
 export const useMobile = () => useSyncExternalStore(subscribeMobile, () => window.matchMedia(mobileQuery).matches, () => false)
 export const bottomSheet = 'top-auto! bottom-0! left-0! w-full! max-w-none! translate-x-0! translate-y-0! rounded-b-none!'
 export type ScanMode = 'loan' | 'return' | 'reservation'
+/** El QR del ticket es un token firmado «datos.firma» (base64url); nunca coincide con
+ *  un código de ejemplar ni de carnet, así que se reconoce en cualquier modo. */
+export const isTicketToken = (code: string) => /^[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}$/.test(code)
 export type ReservationGroup = 'pending' | 'ready' | 'closed'
 export const modes = [
   { value: 'loan', label: 'Préstamo', short: 'Prestar', key: 'F1' },
