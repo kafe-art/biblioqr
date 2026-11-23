@@ -37,7 +37,8 @@ circulationRoutes.post('/circulation/scan', requirePermission('circulation:write
     if (r.consumidoEn) return fail(409,'El ticket ya fue canjeado.')
     const at = new Date()
     if (r.fechaExpiracion <= at) return fail(410,'Reserva vencida.')
-    if (r.retiroProgramado > at || !['pending','ready'].includes(r.estado)) return fail(409,'Reserva no disponible para retiro.')
+    // La hora de retiro elegida es orientativa: el ticket vale desde su emisión hasta que expira.
+    if (!['pending','ready'].includes(r.estado)) return fail(409,'Reserva no disponible para retiro.')
     await eligible(tx,r.usuarioId,r.detalles.length)
     const changed = await tx.ejemplar.updateMany({ where: { id: { in: r.detalles.map(d => d.ejemplarId!) }, estado: 'reserved', condicion: { in: [...lendable] } }, data: { estado: 'loaned' } })
     if (!r.detalles.length || changed.count !== r.detalles.length) return fail(409,'Un ejemplar ya no está disponible.')

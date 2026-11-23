@@ -43,7 +43,7 @@ export function Ticket({ reservation, book }: { reservation: Reservation; book: 
 
       <div className="flex flex-col items-center gap-4 p-5 sm:flex-row sm:items-center">
         <div className={active ? 'rounded-xl bg-white p-2.5' : 'rounded-xl bg-white p-2.5 opacity-30 grayscale'}>
-          {reservation.qrToken && <QRCodeSVG value={reservation.qrToken ?? ''} size={116} level="M" title={`Código QR de la reserva ${reservation.code}`} />}
+          {reservation.qrToken && <QRCodeSVG value={reservation.qrToken ?? ''} size={200} level="L" marginSize={2} title={`Código QR de la reserva ${reservation.code}`} />}
         </div>
         <dl className="w-full space-y-2.5 text-sm">
           <div>

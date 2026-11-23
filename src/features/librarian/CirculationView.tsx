@@ -102,7 +102,7 @@ export function CirculationView() {
       aria-pressed={mode === m.value} disabled={state === 'busy'} onClick={() => reset(m.value)} className={cn('flex min-h-10 items-center gap-2 rounded-lg px-3 text-[13px] font-medium', mode === m.value ? 'bg-surface text-fg shadow-card' : 'text-muted')}>
       {mobile ? m.short : m.label}<Shortcut>{m.key}</Shortcut></button>)}</div>
     <div className="grid items-start gap-6 lg:grid-cols-12"><div ref={panel} className="min-w-0 lg:col-span-7">
-      <ScanPanel key={mode} mode={mode} state={state} message={message} onScan={scan} autoFocus={mode !== 'loan' || (cardConfirmed && !!user)} cameraDefault={mobile} userSlot={mode === 'loan' && <div className="space-y-2">
+      <ScanPanel key={mode} mode={mode} state={state} message={message} onScan={scan} autoFocus={mode !== 'loan' || (cardConfirmed && !!user)} userSlot={mode === 'loan' && <div className="space-y-2">
         <Field label="Carnet del usuario">{id => <input id={id} ref={cardInput} list={suggestions} autoComplete="off" className={inputCls} value={card} disabled={state === 'busy'}
           onChange={e => { clearTimeout(timer.current); setCard(e.target.value); setCardConfirmed(false); setState('idle'); setMessage(''); setReceipt(null) }}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); checkCard() } }} />}</Field>
